@@ -18,17 +18,6 @@
     },
     {
       "parameters": {
-        "options": {}
-      },
-      "id": "parse-form",
-      "name": "Parse Form Data",
-      "type": "n8n-nodes-base.formTrigger",
-      "typeVersion": 2.2,
-      "position": [440, 300],
-      "notes": "Extract metadata and binary file from multipart form"
-    },
-    {
-      "parameters": {
         "jsCode": "// Parse the incoming webhook data\nconst items = $input.all();\nconst item = items[0];\n\n// Get metadata from form fields\nconst metadata = {\n  contributor_name: item.json.body?.contributor_name || item.json.contributor_name || 'Unknown',\n  department: item.json.body?.department || item.json.department || '',\n  message: item.json.body?.message || item.json.message || '',\n  category: item.json.body?.category || item.json.category || 'audio',\n  file_name: item.json.body?.file_name || item.json.file_name || 'upload',\n  file_type: item.json.body?.file_type || item.json.file_type || '',\n  timestamp: item.json.body?.timestamp || item.json.timestamp || new Date().toISOString(),\n};\n\n// Determine if this is audio or image based on category or mime type\nconst isAudio = metadata.category === 'audio' || \n  metadata.file_type?.startsWith('audio/') ||\n  metadata.file_name?.match(/\\.(mp3|wav|m4a|webm|ogg|aac)$/i);\n\nconst isImage = metadata.category === 'image' || \n  metadata.file_type?.startsWith('image/') ||\n  metadata.file_name?.match(/\\.(jpg|jpeg|png|gif|webp|heic)$/i);\n\nreturn [{\n  json: {\n    ...metadata,\n    isAudio,\n    isImage,\n    folderName: `kevin/${metadata.contributor_name.replace(/[^a-zA-Z0-9]/g, '_')}`,\n    uploadTimestamp: new Date().toISOString()\n  },\n  binary: item.binary\n}];"
       },
       "id": "extract-metadata",
@@ -53,50 +42,6 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [840, 300]
-    },
-    {
-      "parameters": {
-        "operation": "list",
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $('Extract Metadata').item.json.folderName }}"
-        },
-        "options": {}
-      },
-      "id": "check-folder-audio",
-      "name": "Check Folder Exists (Audio)",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [1040, 200],
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID",
-          "name": "Google Drive"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "list",
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $('Extract Metadata').item.json.folderName }}"
-        },
-        "options": {}
-      },
-      "id": "check-folder-image",
-      "name": "Check Folder Exists (Image)",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [1040, 400],
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID",
-          "name": "Google Drive"
-        }
-      }
     },
     {
       "parameters": {
