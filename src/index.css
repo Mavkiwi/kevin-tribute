@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 20% 6%;
+    --foreground: 220 20% 95%;
+
+    --card: 240 15% 10%;
+    --card-foreground: 220 20% 95%;
+
+    --popover: 240 15% 12%;
+    --popover-foreground: 220 20% 95%;
+
+    --primary: 36 92% 50%;
+    --primary-foreground: 240 20% 6%;
+
+    --secondary: 240 15% 15%;
+    --secondary-foreground: 220 20% 85%;
+
+    --muted: 240 15% 18%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 240 15% 20%;
+    --accent-foreground: 220 20% 95%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 220 20% 95%;
+
+    --border: 240 15% 20%;
+    --input: 240 15% 18%;
+    --ring: 36 92% 50%;
+
+    --radius: 0.75rem;
+
+    /* Type-specific colors */
+    --type-crazy-idea: 38 92% 50%;
+    --type-coaching: 160 84% 39%;
+    --type-meeting: 217 91% 60%;
+    --type-presentation: 258 90% 66%;
+    --type-skill: 330 81% 60%;
+    --type-project: 187 94% 43%;
+    --type-recording: 0 84% 60%;
+
+    /* Gradients */
+    --gradient-bg: linear-gradient(135deg, #0f0f14 0%, #1a1a2e 50%, #16213e 100%);
+    --gradient-card: linear-gradient(145deg, hsl(240 15% 12%) 0%, hsl(240 15% 8%) 100%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Space Grotesk', sans-serif;
+    background: var(--gradient-bg);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card/60 backdrop-blur-xl border border-border/50 rounded-2xl;
+  }
+
+  .type-glow-crazy-idea {
+    box-shadow: 0 0 40px hsl(var(--type-crazy-idea) / 0.4), 0 0 80px hsl(var(--type-crazy-idea) / 0.2);
+  }
+
+  .type-glow-coaching {
+    box-shadow: 0 0 40px hsl(var(--type-coaching) / 0.4), 0 0 80px hsl(var(--type-coaching) / 0.2);
+  }
+
+  .type-glow-meeting {
+    box-shadow: 0 0 40px hsl(var(--type-meeting) / 0.4), 0 0 80px hsl(var(--type-meeting) / 0.2);
+  }
+
+  .type-glow-presentation {
+    box-shadow: 0 0 40px hsl(var(--type-presentation) / 0.4), 0 0 80px hsl(var(--type-presentation) / 0.2);
+  }
+
+  .type-glow-skill {
+    box-shadow: 0 0 40px hsl(var(--type-skill) / 0.4), 0 0 80px hsl(var(--type-skill) / 0.2);
+  }
+
+  .type-glow-project {
+    box-shadow: 0 0 40px hsl(var(--type-project) / 0.4), 0 0 80px hsl(var(--type-project) / 0.2);
+  }
+
+  .type-glow-recording {
+    box-shadow: 0 0 40px hsl(var(--type-recording) / 0.4), 0 0 80px hsl(var(--type-recording) / 0.2);
+  }
+}
+
+@layer utilities {
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #f59e0b 0%, #ec4899 50%, #8b5cf6 100%);
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
+  }
+
+  .animate-recording-pulse {
+    animation: recording-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes recording-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 hsl(var(--type-recording) / 0.7);
+    }
+    50% {
+      box-shadow: 0 0 0 20px hsl(var(--type-recording) / 0);
+    }
+  }
+}
