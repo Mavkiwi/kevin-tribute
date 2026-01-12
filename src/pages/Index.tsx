@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Upload, CheckCircle2, Award, Mic, Image, Clock, HelpCircle, FileAudio, ImageIcon, MessageSquare, Lightbulb } from 'lucide-react';
+import { Upload, CheckCircle2, Award, Mic, Image, Clock, HelpCircle, FileAudio, ImageIcon, MessageSquare, Lightbulb, Square, Send } from 'lucide-react';
 import { sendFileToWebhook, FileCategory } from '@/lib/webhook';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,14 +11,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RubberBandBall } from '@/components/RubberBandBall';
+import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { AudioVisualizer } from '@/components/AudioVisualizer';
+import { DurationTimer } from '@/components/DurationTimer';
 
-interface UploadedFile {
+interface QueuedFile {
   id: string;
+  file: File;
   name: string;
   size: number;
   category: FileCategory;
-  uploadedAt: Date;
-  status: 'uploading' | 'complete' | 'error';
+  status: 'pending' | 'uploading' | 'complete' | 'error';
   progress: number;
 }
 
@@ -26,37 +29,88 @@ export default function Index() {
   const [yourName, setYourName] = useState('');
   const [department, setDepartment] = useState('');
   const [message, setMessage] = useState('');
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [isDraggingAudio, setIsDraggingAudio] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = useCallback(async (files: FileList | null, category: FileCategory) => {
+  // Audio recording hook
+  const { isRecording, duration, analyserNode, startRecording, stopRecording, error: recordingError } = useAudioRecorder();
+
+  // Add files to queue (don't upload yet)
+  const addFilesToQueue = useCallback((files: FileList | null, category: FileCategory) => {
     if (!files || files.length === 0) return;
 
+    const newFiles: QueuedFile[] = Array.from(files).map(file => ({
+      id: crypto.randomUUID(),
+      file,
+      name: file.name,
+      size: file.size,
+      category,
+      status: 'pending' as const,
+      progress: 0,
+    }));
+
+    setQueuedFiles(prev => [...prev, ...newFiles]);
+    toast.success(`${files.length} file${files.length > 1 ? 's' : ''} added. Enter your name and click Submit.`);
+  }, []);
+
+  // Handle recording stop - add to queue
+  const handleRecordingStop = useCallback(async () => {
+    const audioBlob = await stopRecording();
+    if (!audioBlob) return;
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const file = new File([audioBlob], `kevin-tribute-recording-${timestamp}.webm`, { type: 'audio/webm' });
+
+    const newFile: QueuedFile = {
+      id: crypto.randomUUID(),
+      file,
+      name: file.name,
+      size: file.size,
+      category: 'audio',
+      status: 'pending',
+      progress: 0,
+    };
+
+    setQueuedFiles(prev => [...prev, newFile]);
+    toast.success('Recording saved! Enter your name and click Submit.');
+  }, [stopRecording]);
+
+  // Handle record button click
+  const handleRecordClick = useCallback(async () => {
+    if (isRecording) {
+      await handleRecordingStop();
+    } else {
+      await startRecording();
+    }
+  }, [isRecording, handleRecordingStop, startRecording]);
+
+  // Submit all pending files
+  const submitFiles = useCallback(async () => {
     if (!yourName.trim()) {
-      toast.error('Please enter your name first');
+      toast.error('Please enter your name before submitting');
+      nameInputRef.current?.focus();
       return;
     }
 
-    for (const file of Array.from(files)) {
-      const fileId = crypto.randomUUID();
-      const newFile: UploadedFile = {
-        id: fileId,
-        name: file.name,
-        size: file.size,
-        category,
-        uploadedAt: new Date(),
-        status: 'uploading',
-        progress: 0,
-      };
+    const pendingFiles = queuedFiles.filter(f => f.status === 'pending');
+    if (pendingFiles.length === 0) {
+      toast.error('No files to submit');
+      return;
+    }
 
-      setUploadedFiles(prev => [...prev, newFile]);
+    for (const queuedFile of pendingFiles) {
+      // Update status to uploading
+      setQueuedFiles(prev =>
+        prev.map(f => f.id === queuedFile.id ? { ...f, status: 'uploading' as const } : f)
+      );
 
-      // Simulate upload progress
+      // Simulate progress
       const interval = setInterval(() => {
-        setUploadedFiles(prev =>
+        setQueuedFiles(prev =>
           prev.map(f =>
-            f.id === fileId
+            f.id === queuedFile.id && f.status === 'uploading'
               ? { ...f, progress: Math.min(f.progress + 10, 90) }
               : f
           )
@@ -64,40 +118,34 @@ export default function Index() {
       }, 200);
 
       try {
-        // Send to n8n webhook
-        await sendFileToWebhook(file, category, yourName, department, message);
-
+        await sendFileToWebhook(queuedFile.file, queuedFile.category, yourName, department, message);
         clearInterval(interval);
-
-        setUploadedFiles(prev =>
-          prev.map(f =>
-            f.id === fileId
-              ? { ...f, status: 'complete', progress: 100 }
-              : f
-          )
+        setQueuedFiles(prev =>
+          prev.map(f => f.id === queuedFile.id ? { ...f, status: 'complete' as const, progress: 100 } : f)
         );
-        toast.success(`${file.name} uploaded successfully!`);
+        toast.success(`${queuedFile.name} uploaded!`);
       } catch (error) {
         clearInterval(interval);
         console.error('Upload error:', error);
-        setUploadedFiles(prev =>
-          prev.map(f =>
-            f.id === fileId
-              ? { ...f, status: 'error', progress: 0 }
-              : f
-          )
+        setQueuedFiles(prev =>
+          prev.map(f => f.id === queuedFile.id ? { ...f, status: 'error' as const, progress: 0 } : f)
         );
-        toast.error(`Failed to upload ${file.name}. Try emailing to jeff@plex.nz instead.`);
+        toast.error(`Failed to upload ${queuedFile.name}`);
       }
     }
-  }, [yourName, department, message]);
+  }, [yourName, department, message, queuedFiles]);
+
+  // Remove file from queue
+  const removeFromQueue = useCallback((id: string) => {
+    setQueuedFiles(prev => prev.filter(f => f.id !== id));
+  }, []);
 
   const handleDrop = useCallback((e: React.DragEvent, category: FileCategory) => {
     e.preventDefault();
     if (category === 'audio') setIsDraggingAudio(false);
     if (category === 'image') setIsDraggingImage(false);
-    handleFileUpload(e.dataTransfer.files, category);
-  }, [handleFileUpload]);
+    addFilesToQueue(e.dataTransfer.files, category);
+  }, [addFilesToQueue]);
 
   const handleDragOver = useCallback((e: React.DragEvent, category: FileCategory) => {
     e.preventDefault();
@@ -116,9 +164,10 @@ export default function Index() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const completedCount = uploadedFiles.filter(f => f.status === 'complete').length;
-  const audioFiles = uploadedFiles.filter(f => f.category === 'audio');
-  const imageFiles = uploadedFiles.filter(f => f.category === 'image');
+  const pendingCount = queuedFiles.filter(f => f.status === 'pending').length;
+  const completedCount = queuedFiles.filter(f => f.status === 'complete').length;
+  const audioFiles = queuedFiles.filter(f => f.category === 'audio');
+  const imageFiles = queuedFiles.filter(f => f.category === 'image');
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-orange-950/20 to-slate-900">
@@ -174,8 +223,8 @@ export default function Index() {
                   <Mic className="w-5 h-5 text-orange-400 mt-1 shrink-0" />
                   <div>
                     <p className="font-medium text-white">Voice Recording:</p>
-                    <p>iPhone: Voice Memos app (built-in)</p>
-                    <p>Android: Recorder or Voice Recorder app</p>
+                    <p>Use the "Record Now" button below, or upload from your phone</p>
+                    <p className="text-sm text-slate-400">iPhone: Voice Memos | Android: Recorder app</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -268,63 +317,24 @@ export default function Index() {
           </AccordionItem>
         </Accordion>
 
-        {/* Your Details */}
-        <Card className="mb-6 bg-slate-800/50 border-orange-900/50">
-          <CardHeader>
-            <CardTitle className="text-white">Your Details</CardTitle>
-            <CardDescription className="text-slate-400">
-              Required so we know who each contribution is from
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="name" className="text-slate-200">Your Name *</Label>
-              <Input
-                id="name"
-                value={yourName}
-                onChange={(e) => setYourName(e.target.value)}
-                placeholder="e.g. Sarah Jones"
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="department" className="text-slate-200">Department / Team</Label>
-              <Input
-                id="department"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                placeholder="e.g. Marketing, Finance, Warehouse"
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
-              />
-            </div>
-            <div>
-              <Label htmlFor="message" className="text-slate-200">Written Message (optional)</Label>
-              <Textarea
-                id="message"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Add a short written message to accompany your upload..."
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400 min-h-[80px]"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Upload Area with Tabs */}
         <Card className="mb-6 bg-slate-800/50 border-orange-900/50">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Upload className="w-5 h-5 text-orange-400" />
-              Upload Your Contribution
+              Share Your Contribution
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="audio" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-slate-700">
-                <TabsTrigger value="audio" className="data-[state=active]:bg-orange-600">
+            <Tabs defaultValue="record" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 bg-slate-700">
+                <TabsTrigger value="record" className="data-[state=active]:bg-orange-600">
+                  <Mic className="w-4 h-4 mr-2" />
+                  Record Now
+                </TabsTrigger>
+                <TabsTrigger value="upload" className="data-[state=active]:bg-orange-600">
                   <FileAudio className="w-4 h-4 mr-2" />
-                  Voice Recording
+                  Upload Audio
                 </TabsTrigger>
                 <TabsTrigger value="image" className="data-[state=active]:bg-orange-600">
                   <ImageIcon className="w-4 h-4 mr-2" />
@@ -332,7 +342,52 @@ export default function Index() {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="audio" className="mt-4">
+              {/* Record Now Tab */}
+              <TabsContent value="record" className="mt-4">
+                <div className="border-2 border-dashed rounded-xl p-6 text-center border-slate-600">
+                  <AudioVisualizer
+                    analyserNode={analyserNode}
+                    isRecording={isRecording}
+                    color="#f97316"
+                  />
+
+                  <DurationTimer duration={duration} isRecording={isRecording} />
+
+                  <button
+                    onClick={handleRecordClick}
+                    className={`
+                      relative w-20 h-20 rounded-full mx-auto mt-4 mb-2
+                      flex items-center justify-center
+                      transition-all duration-300 ease-out
+                      focus:outline-none focus:ring-4 focus:ring-white/20
+                      ${isRecording
+                        ? 'bg-red-500 animate-pulse'
+                        : 'bg-orange-600 hover:bg-orange-500 hover:scale-105 active:scale-95'
+                      }
+                    `}
+                  >
+                    {isRecording ? (
+                      <Square className="w-8 h-8 text-white fill-white" />
+                    ) : (
+                      <Mic className="w-10 h-10 text-white" />
+                    )}
+                    {isRecording && (
+                      <div className="absolute inset-0 rounded-full bg-red-500/30 animate-ping" />
+                    )}
+                  </button>
+
+                  <p className="text-slate-300 text-sm">
+                    {isRecording ? 'Tap to stop recording' : 'Tap to start recording'}
+                  </p>
+
+                  {recordingError && (
+                    <p className="text-red-400 text-sm mt-2">{recordingError}</p>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* Upload Audio Tab */}
+              <TabsContent value="upload" className="mt-4">
                 <div
                   className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
                     isDraggingAudio
@@ -353,7 +408,7 @@ export default function Index() {
                       accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm"
                       multiple
                       className="hidden"
-                      onChange={(e) => handleFileUpload(e.target.files, 'audio')}
+                      onChange={(e) => addFilesToQueue(e.target.files, 'audio')}
                     />
                     <Button
                       variant="secondary"
@@ -366,6 +421,7 @@ export default function Index() {
                 </div>
               </TabsContent>
 
+              {/* Photos Tab */}
               <TabsContent value="image" className="mt-4">
                 <div
                   className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
@@ -387,7 +443,7 @@ export default function Index() {
                       accept="image/*,.jpg,.jpeg,.png,.gif,.heic,.webp"
                       multiple
                       className="hidden"
-                      onChange={(e) => handleFileUpload(e.target.files, 'image')}
+                      onChange={(e) => addFilesToQueue(e.target.files, 'image')}
                     />
                     <Button
                       variant="secondary"
@@ -401,11 +457,11 @@ export default function Index() {
               </TabsContent>
             </Tabs>
 
-            {/* Uploaded Files List */}
-            {uploadedFiles.length > 0 && (
+            {/* Queued Files List */}
+            {queuedFiles.length > 0 && (
               <div className="mt-6 space-y-3">
                 <h3 className="text-white font-medium">
-                  Uploaded Files ({completedCount} complete)
+                  Files ({pendingCount} pending, {completedCount} complete)
                 </h3>
 
                 {audioFiles.length > 0 && (
@@ -414,7 +470,12 @@ export default function Index() {
                       <FileAudio className="w-4 h-4" /> Audio ({audioFiles.length})
                     </p>
                     {audioFiles.map((file) => (
-                      <FileItem key={file.id} file={file} formatFileSize={formatFileSize} />
+                      <FileItem
+                        key={file.id}
+                        file={file}
+                        formatFileSize={formatFileSize}
+                        onRemove={file.status === 'pending' ? () => removeFromQueue(file.id) : undefined}
+                      />
                     ))}
                   </div>
                 )}
@@ -425,11 +486,77 @@ export default function Index() {
                       <ImageIcon className="w-4 h-4" /> Photos ({imageFiles.length})
                     </p>
                     {imageFiles.map((file) => (
-                      <FileItem key={file.id} file={file} formatFileSize={formatFileSize} />
+                      <FileItem
+                        key={file.id}
+                        file={file}
+                        formatFileSize={formatFileSize}
+                        onRemove={file.status === 'pending' ? () => removeFromQueue(file.id) : undefined}
+                      />
                     ))}
                   </div>
                 )}
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Your Details & Submit */}
+        <Card className="mb-6 bg-slate-800/50 border-orange-900/50">
+          <CardHeader>
+            <CardTitle className="text-white">Your Details & Submit</CardTitle>
+            <CardDescription className="text-slate-400">
+              Enter your name to submit your contribution
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="name" className="text-slate-200">Your Name *</Label>
+              <Input
+                ref={nameInputRef}
+                id="name"
+                value={yourName}
+                onChange={(e) => setYourName(e.target.value)}
+                placeholder="e.g. Sarah Jones"
+                className={`bg-slate-700 border-slate-600 text-white placeholder:text-slate-400 ${
+                  pendingCount > 0 && !yourName.trim() ? 'border-orange-500 ring-1 ring-orange-500' : ''
+                }`}
+                required
+              />
+              {pendingCount > 0 && !yourName.trim() && (
+                <p className="text-orange-400 text-sm mt-1">Please enter your name to submit</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="department" className="text-slate-200">Department / Team</Label>
+              <Input
+                id="department"
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                placeholder="e.g. Marketing, Finance, Warehouse"
+                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
+              />
+            </div>
+            <div>
+              <Label htmlFor="message" className="text-slate-200">Written Message (optional)</Label>
+              <Textarea
+                id="message"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Add a short written message to accompany your upload..."
+                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400 min-h-[80px]"
+              />
+            </div>
+
+            {/* Submit Button */}
+            {pendingCount > 0 && (
+              <Button
+                onClick={submitFiles}
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white py-6 text-lg"
+                disabled={!yourName.trim()}
+              >
+                <Send className="w-5 h-5 mr-2" />
+                Submit {pendingCount} File{pendingCount > 1 ? 's' : ''}
+              </Button>
             )}
           </CardContent>
         </Card>
@@ -441,7 +568,7 @@ export default function Index() {
               <div className="flex items-center gap-3">
                 <CheckCircle2 className="w-8 h-8 text-green-400" />
                 <div>
-                  <p className="text-green-300 font-medium">Thank you, {yourName}!</p>
+                  <p className="text-green-300 font-medium">Thank you{yourName ? `, ${yourName}` : ''}!</p>
                   <p className="text-green-400/80 text-sm">
                     Your {completedCount === 1 ? 'contribution has' : 'contributions have'} been received.
                     They'll be included in Kevin's retirement book.
@@ -481,15 +608,25 @@ export default function Index() {
 }
 
 // File item component
-function FileItem({ file, formatFileSize }: { file: UploadedFile; formatFileSize: (bytes: number) => string }) {
+function FileItem({
+  file,
+  formatFileSize,
+  onRemove
+}: {
+  file: QueuedFile;
+  formatFileSize: (bytes: number) => string;
+  onRemove?: () => void;
+}) {
   return (
     <div className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg">
       {file.status === 'complete' ? (
         <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
       ) : file.status === 'error' ? (
         <div className="w-5 h-5 rounded-full bg-red-400 shrink-0" />
-      ) : (
+      ) : file.status === 'uploading' ? (
         <div className="w-5 h-5 rounded-full border-2 border-orange-400 border-t-transparent animate-spin shrink-0" />
+      ) : (
+        <div className="w-5 h-5 rounded-full border-2 border-slate-400 shrink-0" />
       )}
       <div className="flex-1 min-w-0">
         <p className="text-white truncate">{file.name}</p>
@@ -505,6 +642,14 @@ function FileItem({ file, formatFileSize }: { file: UploadedFile; formatFileSize
       )}
       {file.status === 'error' && (
         <span className="text-red-400 text-sm">Failed</span>
+      )}
+      {file.status === 'pending' && onRemove && (
+        <button
+          onClick={onRemove}
+          className="text-slate-400 hover:text-red-400 text-sm"
+        >
+          Remove
+        </button>
       )}
     </div>
   );
