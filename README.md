@@ -1,73 +1,92 @@
-# Welcome to your Lovable project
+# For Kevin - OfficeMax Retirement Tribute
 
-## Project info
+A web application for collecting stories, memories, and photos to create a special coffee-table book celebrating Kevin's retirement from OfficeMax.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Features
 
-## How can I edit this code?
+- **Voice Recording Upload** - Upload audio recordings of stories and memories
+- **Photo Upload** - Share photos from team events, celebrations, etc.
+- **Per-Person Folders** - Automatically organized in Google Drive by contributor
+- **Transcription Support** - Audio files transcribed for easy editing
+- **Database Logging** - All submissions tracked with metadata
+- **OfficeMax Branding** - Rubber band ball animation and orange theme
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+- **Frontend:** Vite + React + TypeScript
+- **Styling:** Tailwind CSS + shadcn/ui
+- **Backend:** n8n workflow automation
+- **Storage:** Google Drive
+- **Database:** Airtable/Notion/Supabase (configurable)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Getting Started
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js 18+
+- npm or yarn
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Installation
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+```bash
+# Clone the repository
+git clone https://github.com/YOUR_USERNAME/kevin-tribute.git
 
-Follow these steps:
+# Navigate to project directory
+cd kevin-tribute
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Install dependencies
+npm install
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Build for Production
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+npm run build
+```
 
-**Use GitHub Codespaces**
+## Configuration
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Webhook URL
+Update the webhook URL in `src/lib/webhook.ts`:
+```typescript
+const WEBHOOK_URL = 'https://plex.app.n8n.cloud/webhook/kevin-tribute';
+```
 
-## What technologies are used for this project?
+### n8n Workflow
+See `docs/n8n-workflow-spec.md` for the complete n8n workflow specification.
 
-This project is built with:
+## Google Drive Structure
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```
+kevin/
+├── {Contributor Name}/
+│   ├── audio files
+│   └── image files
+└── ...
+```
 
-## How can I deploy this project?
+## Deployment
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+The project can be deployed to:
+- Vercel
+- Netlify
+- GitHub Pages
+- Any static hosting
 
-## Can I connect a custom domain to my Lovable project?
+### Vercel Deployment
+```bash
+npm install -g vercel
+vercel
+```
 
-Yes, you can!
+## Powered by Plex
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+This tribute page was built by the Plex team for OfficeMax.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+---
+
+For questions or support, contact jeff@plex.nz
