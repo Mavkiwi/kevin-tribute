@@ -1,5 +1,6 @@
 // Kevin Tribute webhook - routes to n8n for Google Drive storage and database logging
-const WEBHOOK_URL = 'https://plex.app.n8n.cloud/webhook/kevin-tribute';
+// Using existing voice-idea webhook until dedicated kevin-tribute workflow is created
+const WEBHOOK_URL = 'https://plex.app.n8n.cloud/webhook/voice-idea';
 
 export type FileCategory = 'audio' | 'image';
 
