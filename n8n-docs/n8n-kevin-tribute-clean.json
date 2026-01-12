@@ -1,0 +1,260 @@
+{
+  "name": "Kevin Tribute",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kevin-tribute",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "webhookId": "kevin-tribute"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst body = item.json.body || item.json;\n\nconst contributor = body.contributor_name || 'Unknown';\nconst cleanName = contributor.replace(/[^a-zA-Z0-9]/g, '_');\nconst category = body.category || 'audio';\nconst isAudio = (category === 'audio');\n\nreturn [{\n  json: {\n    contributor_name: contributor,\n    cleanName: cleanName,\n    department: body.department || '',\n    message: body.message || '',\n    category: category,\n    file_name: body.file_name || 'upload',\n    file_type: body.file_type || '',\n    isAudio: isAudio,\n    timestamp: new Date().toISOString()\n  },\n  binary: item.binary\n}];"
+      },
+      "name": "Parse Data",
+      "type": "n8n-nodes-base.code",
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "queryString": "=mimeType = 'application/vnd.google-apps.folder' and name = '{{ $json.cleanName }}' and 'KEVIN_PARENT_FOLDER_ID' in parents and trashed = false",
+        "limit": 1,
+        "options": {}
+      },
+      "name": "Search Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const searchResult = $input.first();\nconst metadata = $('Parse Data').first().json;\nconst binary = $('Parse Data').first().binary;\n\nconst folderId = searchResult.json.id || null;\n\nreturn [{\n  json: {\n    ...metadata,\n    existingFolderId: folderId,\n    needsFolder: !folderId\n  },\n  binary: binary\n}];"
+      },
+      "name": "Check Folder",
+      "type": "n8n-nodes-base.code",
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needsFolder }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Need Folder?",
+      "type": "n8n-nodes-base.if",
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "createFolder",
+        "name": "={{ $json.cleanName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "KEVIN_PARENT_FOLDER_ID"
+        },
+        "options": {}
+      },
+      "name": "Create Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first();\nconst checkData = $('Check Folder').first().json;\nconst binary = $('Check Folder').first().binary;\n\nlet folderId;\nif (checkData.existingFolderId) {\n  folderId = checkData.existingFolderId;\n} else {\n  folderId = input.json.id;\n}\n\nreturn [{\n  json: {\n    contributor_name: checkData.contributor_name,\n    cleanName: checkData.cleanName,\n    department: checkData.department,\n    message: checkData.message,\n    category: checkData.category,\n    file_name: checkData.file_name,\n    file_type: checkData.file_type,\n    isAudio: checkData.isAudio,\n    timestamp: checkData.timestamp,\n    folderId: folderId\n  },\n  binary: binary\n}];"
+      },
+      "name": "Set Folder ID",
+      "type": "n8n-nodes-base.code",
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isAudio }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Is Audio?",
+      "type": "n8n-nodes-base.if",
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $json.file_name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.folderId }}"
+        },
+        "options": {}
+      },
+      "name": "Upload Audio",
+      "type": "n8n-nodes-base.googleDrive",
+      "position": [1850, 200]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $json.file_name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.folderId }}"
+        },
+        "options": {}
+      },
+      "name": "Upload Image",
+      "type": "n8n-nodes-base.googleDrive",
+      "position": [1850, 400]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "name": "Transcribe",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "position": [2050, 200]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "kevintribute"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "data"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $('Set Folder ID').first().json.timestamp }}",
+            "Contributor": "={{ $('Set Folder ID').first().json.contributor_name }}",
+            "Department": "={{ $('Set Folder ID').first().json.department }}",
+            "Type": "Audio",
+            "FileName": "={{ $('Set Folder ID').first().json.file_name }}",
+            "Message": "={{ $('Set Folder ID').first().json.message }}",
+            "Transcription": "={{ $json.text }}",
+            "DriveLink": "={{ $('Upload Audio').first().json.webViewLink }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Log Audio",
+      "type": "n8n-nodes-base.googleSheets",
+      "position": [2250, 200]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "kevintribute"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "data"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $('Set Folder ID').first().json.timestamp }}",
+            "Contributor": "={{ $('Set Folder ID').first().json.contributor_name }}",
+            "Department": "={{ $('Set Folder ID').first().json.department }}",
+            "Type": "Image",
+            "FileName": "={{ $('Set Folder ID').first().json.file_name }}",
+            "Message": "={{ $('Set Folder ID').first().json.message }}",
+            "Transcription": "",
+            "DriveLink": "={{ $('Upload Image').first().json.webViewLink }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Log Image",
+      "type": "n8n-nodes-base.googleSheets",
+      "position": [2050, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Parse Data", "type": "main", "index": 0}]]
+    },
+    "Parse Data": {
+      "main": [[{"node": "Search Folder", "type": "main", "index": 0}]]
+    },
+    "Search Folder": {
+      "main": [[{"node": "Check Folder", "type": "main", "index": 0}]]
+    },
+    "Check Folder": {
+      "main": [[{"node": "Need Folder?", "type": "main", "index": 0}]]
+    },
+    "Need Folder?": {
+      "main": [
+        [{"node": "Create Folder", "type": "main", "index": 0}],
+        [{"node": "Set Folder ID", "type": "main", "index": 0}]
+      ]
+    },
+    "Create Folder": {
+      "main": [[{"node": "Set Folder ID", "type": "main", "index": 0}]]
+    },
+    "Set Folder ID": {
+      "main": [[{"node": "Is Audio?", "type": "main", "index": 0}]]
+    },
+    "Is Audio?": {
+      "main": [
+        [{"node": "Upload Audio", "type": "main", "index": 0}],
+        [{"node": "Upload Image", "type": "main", "index": 0}]
+      ]
+    },
+    "Upload Audio": {
+      "main": [[{"node": "Transcribe", "type": "main", "index": 0}]]
+    },
+    "Transcribe": {
+      "main": [[{"node": "Log Audio", "type": "main", "index": 0}]]
+    },
+    "Upload Image": {
+      "main": [[{"node": "Log Image", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
