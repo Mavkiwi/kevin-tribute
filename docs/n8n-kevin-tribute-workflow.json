@@ -1,0 +1,208 @@
+{
+  "name": "Kevin Tribute",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kevin-tribute",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "kevin-tribute"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Parse the metadata from the webhook\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  // Get metadata - could be string or object\n  let metadata = item.json.body?.metadata || item.json.metadata || '{}';\n  \n  if (typeof metadata === 'string') {\n    try {\n      metadata = JSON.parse(metadata);\n    } catch (e) {\n      metadata = {};\n    }\n  }\n  \n  // Sanitize contributor name for folder creation\n  const contributorName = (metadata.contributor_name || 'Anonymous')\n    .replace(/[^a-zA-Z0-9\\s-]/g, '')\n    .trim() || 'Anonymous';\n  \n  results.push({\n    json: {\n      contributor_name: contributorName,\n      department: metadata.department || 'Not specified',\n      category: metadata.category || 'unknown',\n      message: metadata.message || '',\n      file_name: metadata.file_name || 'unnamed-file',\n      file_type: metadata.file_type || 'application/octet-stream',\n      file_size: metadata.file_size || 0,\n      timestamp: metadata.timestamp || new Date().toISOString(),\n      type: metadata.type || 'kevin_tribute'\n    },\n    binary: item.binary\n  });\n}\n\nreturn results;"
+      },
+      "id": "parse-metadata",
+      "name": "Parse Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "createFolder",
+        "folderName": "={{ $json.contributor_name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "parentFolderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "options": {
+          "skipIfExists": true
+        }
+      },
+      "id": "create-folder",
+      "name": "Create Contributor Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [690, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      },
+      "notes": "CONFIGURE: Select your 'kevin' folder as the parent"
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $json.file_name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $node['Create Contributor Folder'].json.id }}"
+        },
+        "options": {}
+      },
+      "id": "upload-file",
+      "name": "Upload to Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [910, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $json.timestamp }}",
+            "Contributor": "={{ $('Parse Metadata').item.json.contributor_name }}",
+            "Department": "={{ $('Parse Metadata').item.json.department }}",
+            "Category": "={{ $('Parse Metadata').item.json.category }}",
+            "File Name": "={{ $('Parse Metadata').item.json.file_name }}",
+            "Message": "={{ $('Parse Metadata').item.json.message }}",
+            "Google Drive Link": "={{ $json.webViewLink }}",
+            "File ID": "={{ $json.id }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-to-sheet",
+      "name": "Log to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1130, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      },
+      "notes": "CONFIGURE: Create a Google Sheet and select it here"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"received\",\n  \"contributor\": \"{{ $('Parse Metadata').item.json.contributor_name }}\",\n  \"file_id\": \"{{ $json.id }}\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1350, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Metadata": {
+      "main": [
+        [
+          {
+            "node": "Create Contributor Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Contributor Folder": {
+      "main": [
+        [
+          {
+            "node": "Upload to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Google Sheet": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "pinData": {}
+}

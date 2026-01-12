@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Upload, CheckCircle2, Award, Mic, Image, Clock, HelpCircle, FileAudio, ImageIcon, MessageSquare } from 'lucide-react';
+import { Upload, CheckCircle2, Award, Mic, Image, Clock, HelpCircle, FileAudio, ImageIcon, MessageSquare, Lightbulb } from 'lucide-react';
 import { sendFileToWebhook, FileCategory } from '@/lib/webhook';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -160,12 +160,12 @@ export default function Index() {
         </Card>
 
         {/* How To Section */}
-        <Accordion type="single" collapsible className="mb-6">
+        <Accordion type="multiple" className="mb-6 space-y-2">
           <AccordionItem value="how-to" className="border-orange-900/50 bg-slate-800/30 rounded-lg px-4">
             <AccordionTrigger className="text-white hover:text-orange-300">
               <span className="flex items-center gap-2">
                 <HelpCircle className="w-5 h-5" />
-                Tips for Recording (tap to expand)
+                How to Record & Upload (tap to expand)
               </span>
             </AccordionTrigger>
             <AccordionContent className="text-slate-300">
@@ -183,9 +183,8 @@ export default function Index() {
                   <div>
                     <p className="font-medium text-white">Tips:</p>
                     <ul className="list-disc list-inside space-y-1 text-sm">
-                      <li>Share a favourite memory or story about Kevin</li>
-                      <li>Talk about something he taught you</li>
-                      <li>Mention a funny moment or inside joke</li>
+                      <li>Find a quiet spot - your car works great!</li>
+                      <li>Just chat like you're talking to a friend</li>
                       <li>Don't worry about being perfect - just be yourself!</li>
                       <li>Any length is fine - 1 minute or 10 minutes</li>
                     </ul>
@@ -202,6 +201,68 @@ export default function Index() {
                     </ul>
                   </div>
                 </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Thought Starter Questions */}
+          <AccordionItem value="thought-starters" className="border-orange-900/50 bg-slate-800/30 rounded-lg px-4">
+            <AccordionTrigger className="text-white hover:text-orange-300">
+              <span className="flex items-center gap-2">
+                <Lightbulb className="w-5 h-5" />
+                Thought Starter Questions (tap to expand)
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="text-slate-300">
+              <div className="space-y-4 pt-2 pb-4">
+                <p className="text-sm text-slate-400 mb-3">
+                  Not sure what to say? Pick one or two of these to get started:
+                </p>
+                <ul className="space-y-3 text-sm">
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">1.</span>
+                    <span>What's your favourite memory of working with Kevin?</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">2.</span>
+                    <span>What's something Kevin taught you (about work or life)?</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">3.</span>
+                    <span>Describe Kevin in three words - and why those words?</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">4.</span>
+                    <span>What's a funny story or moment involving Kevin?</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">5.</span>
+                    <span>How has Kevin made a difference to you or the team?</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">6.</span>
+                    <span>What will you miss most about working with Kevin?</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">7.</span>
+                    <span>Is there a "Kevin-ism" or phrase he's known for saying?</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">8.</span>
+                    <span>What advice would you give Kevin for retirement?</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">9.</span>
+                    <span>What's something about Kevin that might surprise people?</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-orange-400 font-bold">10.</span>
+                    <span>If Kevin was a superhero, what would his superpower be?</span>
+                  </li>
+                </ul>
+                <p className="text-xs text-slate-500 mt-4 italic">
+                  Remember: There's no wrong answer. Just speak from the heart!
+                </p>
               </div>
             </AccordionContent>
           </AccordionItem>

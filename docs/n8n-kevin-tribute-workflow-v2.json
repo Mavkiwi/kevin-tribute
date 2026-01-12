@@ -1,0 +1,388 @@
+{
+  "name": "Kevin Tribute v2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kevin-tribute",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 400],
+      "webhookId": "kevin-tribute"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Parse the metadata from the webhook\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  let metadata = item.json.body?.metadata || item.json.metadata || '{}';\n  \n  if (typeof metadata === 'string') {\n    try {\n      metadata = JSON.parse(metadata);\n    } catch (e) {\n      metadata = {};\n    }\n  }\n  \n  // Sanitize contributor name for folder creation\n  const contributorName = (metadata.contributor_name || 'Anonymous')\n    .replace(/[^a-zA-Z0-9\\s-]/g, '')\n    .trim() || 'Anonymous';\n  \n  // Determine if audio or image\n  const category = metadata.category || 'unknown';\n  const isAudio = category === 'audio' || \n    (metadata.file_type && metadata.file_type.startsWith('audio/'));\n  \n  results.push({\n    json: {\n      contributor_name: contributorName,\n      department: metadata.department || 'Not specified',\n      category: category,\n      is_audio: isAudio,\n      message: metadata.message || '',\n      file_name: metadata.file_name || 'unnamed-file',\n      file_type: metadata.file_type || 'application/octet-stream',\n      file_size: metadata.file_size || 0,\n      timestamp: metadata.timestamp || new Date().toISOString(),\n      type: metadata.type || 'kevin_tribute'\n    },\n    binary: item.binary\n  });\n}\n\nreturn results;"
+      },
+      "id": "parse-metadata",
+      "name": "Parse Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 400]
+    },
+    {
+      "parameters": {
+        "operation": "createFolder",
+        "folderName": "={{ $json.contributor_name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "parentFolderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "options": {
+          "skipIfExists": true
+        }
+      },
+      "id": "create-folder",
+      "name": "Create Contributor Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [690, 400],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      },
+      "notes": "CONFIGURE: Select your 'kevin' folder as the parent"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "audio-check",
+              "leftValue": "={{ $('Parse Metadata').item.json.is_audio }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-audio-check",
+      "name": "Is Audio?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $('Parse Metadata').item.json.file_name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Create Contributor Folder').item.json.id }}"
+        },
+        "options": {}
+      },
+      "id": "upload-audio",
+      "name": "Upload Audio to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1130, 280],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "id": "transcribe-audio",
+      "name": "Transcribe Audio (Whisper)",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.3,
+      "position": [1350, 280],
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": ""
+        }
+      },
+      "notes": "CONFIGURE: Add your OpenAI API credentials"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $('Parse Metadata').item.json.timestamp }}",
+            "Contributor": "={{ $('Parse Metadata').item.json.contributor_name }}",
+            "Department": "={{ $('Parse Metadata').item.json.department }}",
+            "Category": "audio",
+            "File Name": "={{ $('Parse Metadata').item.json.file_name }}",
+            "Message": "={{ $('Parse Metadata').item.json.message }}",
+            "Google Drive Link": "={{ $('Upload Audio to Drive').item.json.webViewLink }}",
+            "File ID": "={{ $('Upload Audio to Drive').item.json.id }}",
+            "Transcription": "={{ $json.text }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-audio",
+      "name": "Log Audio to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1570, 280],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      },
+      "notes": "CONFIGURE: Select your Kevin Tribute Google Sheet"
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $('Parse Metadata').item.json.file_name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Create Contributor Folder').item.json.id }}"
+        },
+        "options": {}
+      },
+      "id": "upload-image",
+      "name": "Upload Image to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1130, 520],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $('Parse Metadata').item.json.timestamp }}",
+            "Contributor": "={{ $('Parse Metadata').item.json.contributor_name }}",
+            "Department": "={{ $('Parse Metadata').item.json.department }}",
+            "Category": "image",
+            "File Name": "={{ $('Parse Metadata').item.json.file_name }}",
+            "Message": "={{ $('Parse Metadata').item.json.message }}",
+            "Google Drive Link": "={{ $json.webViewLink }}",
+            "File ID": "={{ $json.id }}",
+            "Transcription": ""
+          }
+        },
+        "options": {}
+      },
+      "id": "log-image",
+      "name": "Log Image to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1350, 520],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      },
+      "notes": "CONFIGURE: Select your Kevin Tribute Google Sheet"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"received\",\n  \"contributor\": \"{{ $('Parse Metadata').item.json.contributor_name }}\",\n  \"category\": \"{{ $('Parse Metadata').item.json.category }}\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "id": "respond-audio",
+      "name": "Respond (Audio)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1790, 280]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"received\",\n  \"contributor\": \"{{ $('Parse Metadata').item.json.contributor_name }}\",\n  \"category\": \"{{ $('Parse Metadata').item.json.category }}\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "id": "respond-image",
+      "name": "Respond (Image)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1570, 520]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Metadata": {
+      "main": [
+        [
+          {
+            "node": "Create Contributor Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Contributor Folder": {
+      "main": [
+        [
+          {
+            "node": "Is Audio?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Audio?": {
+      "main": [
+        [
+          {
+            "node": "Upload Audio to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Image to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Audio to Drive": {
+      "main": [
+        [
+          {
+            "node": "Transcribe Audio (Whisper)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe Audio (Whisper)": {
+      "main": [
+        [
+          {
+            "node": "Log Audio to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Audio to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Respond (Audio)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Image to Drive": {
+      "main": [
+        [
+          {
+            "node": "Log Image to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Image to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Respond (Image)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "pinData": {}
+}
