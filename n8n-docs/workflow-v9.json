@@ -59,7 +59,7 @@
         "operation": "upload",
         "name": "={{ $json.new_file_name }}",
         "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
-        "folderId": { "__rl": true, "mode": "id", "value": "TODO_SET_KEVIN_FOLDER_ID" },
+        "folderId": { "__rl": true, "mode": "id", "value": "16Dhw6fVCmSDE5x5YCo9wjKMUCpjFpELS" },
         "inputDataFieldName": "data",
         "options": {}
       },
@@ -115,7 +115,7 @@
     {
       "parameters": {
         "operation": "append",
-        "documentId": { "__rl": true, "mode": "id", "value": "1UwdnAcIYEoQoJlg5Tgx_xYj1gYXsNUNKdCxTX4lxYQE" },
+        "documentId": { "__rl": true, "mode": "id", "value": "1OGJa5fAXppsOnSUsk8-usoMYvOdeET8RTlEIfZEkG-0" },
         "sheetName": { "__rl": true, "mode": "list", "value": "data" },
         "columns": {
           "mappingMode": "defineBelow",
@@ -141,7 +141,7 @@
     {
       "parameters": {
         "operation": "append",
-        "documentId": { "__rl": true, "mode": "id", "value": "1UwdnAcIYEoQoJlg5Tgx_xYj1gYXsNUNKdCxTX4lxYQE" },
+        "documentId": { "__rl": true, "mode": "id", "value": "1OGJa5fAXppsOnSUsk8-usoMYvOdeET8RTlEIfZEkG-0" },
         "sheetName": { "__rl": true, "mode": "list", "value": "data" },
         "columns": {
           "mappingMode": "defineBelow",
@@ -169,7 +169,7 @@
         "operation": "upload",
         "name": "={{ $json.new_file_name }}",
         "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
-        "folderId": { "__rl": true, "mode": "id", "value": "TODO_SET_KEVIN_FOLDER_ID" },
+        "folderId": { "__rl": true, "mode": "id", "value": "16Dhw6fVCmSDE5x5YCo9wjKMUCpjFpELS" },
         "inputDataFieldName": "data",
         "options": {}
       },
@@ -181,7 +181,7 @@
     {
       "parameters": {
         "operation": "append",
-        "documentId": { "__rl": true, "mode": "id", "value": "1UwdnAcIYEoQoJlg5Tgx_xYj1gYXsNUNKdCxTX4lxYQE" },
+        "documentId": { "__rl": true, "mode": "id", "value": "1OGJa5fAXppsOnSUsk8-usoMYvOdeET8RTlEIfZEkG-0" },
         "sheetName": { "__rl": true, "mode": "list", "value": "data" },
         "columns": {
           "mappingMode": "defineBelow",
