@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Upload, CheckCircle2, Award, Mic, Image, Clock, HelpCircle, FileAudio, ImageIcon, MessageSquare, Lightbulb, Square, Send } from 'lucide-react';
-import { sendFileToWebhook, FileCategory } from '@/lib/webhook';
+import { Upload, CheckCircle2, Award, Mic, Image, Clock, HelpCircle, FileAudio, ImageIcon, MessageSquare, Lightbulb, Square, Send, Loader2 } from 'lucide-react';
+import { sendFileToWebhook, sendChunkedFiles, FileCategory } from '@/lib/webhook';
+import { compressAudioForTranscription, needsCompression } from '@/lib/audioCompressor';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,6 @@ import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { RubberBandBall } from '@/components/RubberBandBall';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { AudioVisualizer } from '@/components/AudioVisualizer';
 import { DurationTimer } from '@/components/DurationTimer';
@@ -21,8 +21,9 @@ interface QueuedFile {
   name: string;
   size: number;
   category: FileCategory;
-  status: 'pending' | 'uploading' | 'complete' | 'error';
+  status: 'pending' | 'uploading' | 'compressing' | 'complete' | 'error';
   progress: number;
+  statusMessage?: string;
 }
 
 export default function Index() {
@@ -87,6 +88,8 @@ export default function Index() {
   }, [isRecording, handleRecordingStop, startRecording]);
 
   // Submit all pending files
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const submitFiles = useCallback(async () => {
     if (!yourName.trim()) {
       toast.error('Please enter your name before submitting');
@@ -100,39 +103,107 @@ export default function Index() {
       return;
     }
 
+    setIsSubmitting(true);
+
     for (const queuedFile of pendingFiles) {
-      // Update status to uploading
-      setQueuedFiles(prev =>
-        prev.map(f => f.id === queuedFile.id ? { ...f, status: 'uploading' as const } : f)
-      );
-
-      // Simulate progress
-      const interval = setInterval(() => {
-        setQueuedFiles(prev =>
-          prev.map(f =>
-            f.id === queuedFile.id && f.status === 'uploading'
-              ? { ...f, progress: Math.min(f.progress + 10, 90) }
-              : f
-          )
-        );
-      }, 200);
-
       try {
-        await sendFileToWebhook(queuedFile.file, queuedFile.category, yourName, department, message);
-        clearInterval(interval);
-        setQueuedFiles(prev =>
-          prev.map(f => f.id === queuedFile.id ? { ...f, status: 'complete' as const, progress: 100 } : f)
-        );
-        toast.success(`${queuedFile.name} uploaded!`);
+        // For big audio files, compress first
+        if (queuedFile.category === 'audio' && needsCompression(queuedFile.file)) {
+          // Compression phase
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? {
+              ...f,
+              status: 'compressing' as const,
+              statusMessage: 'Compressing audio...',
+              progress: 0
+            } : f)
+          );
+
+          const result = await compressAudioForTranscription(queuedFile.file, (progress) => {
+            setQueuedFiles(prev =>
+              prev.map(f => f.id === queuedFile.id ? {
+                ...f,
+                progress: Math.round(progress.percent * 0.5), // First 50% is compression
+                statusMessage: progress.message
+              } : f)
+            );
+          });
+
+          // Upload phase (compressed chunks)
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? {
+              ...f,
+              status: 'uploading' as const,
+              statusMessage: result.chunkCount > 1
+                ? `Uploading ${result.chunkCount} chunks...`
+                : 'Uploading compressed audio...',
+              progress: 50
+            } : f)
+          );
+
+          await sendChunkedFiles(
+            result.files,
+            'audio',
+            yourName,
+            department,
+            message,
+            result.recordingId,
+            (chunkIndex, totalChunks) => {
+              const uploadProgress = 50 + Math.round(((chunkIndex + 1) / totalChunks) * 50);
+              setQueuedFiles(prev =>
+                prev.map(f => f.id === queuedFile.id ? {
+                  ...f,
+                  progress: uploadProgress,
+                  statusMessage: `Uploaded chunk ${chunkIndex + 1} of ${totalChunks}`
+                } : f)
+              );
+            }
+          );
+
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? {
+              ...f,
+              status: 'complete' as const,
+              progress: 100,
+              statusMessage: undefined
+            } : f)
+          );
+          toast.success(`${queuedFile.name} uploaded! (compressed from ${formatFileSize(result.originalSize)} to ${formatFileSize(result.totalCompressedSize)})`);
+
+        } else {
+          // Normal upload (small files or images)
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? { ...f, status: 'uploading' as const, progress: 0 } : f)
+          );
+
+          // Simulate progress for small files
+          const interval = setInterval(() => {
+            setQueuedFiles(prev =>
+              prev.map(f =>
+                f.id === queuedFile.id && f.status === 'uploading'
+                  ? { ...f, progress: Math.min(f.progress + 15, 90) }
+                  : f
+              )
+            );
+          }, 150);
+
+          await sendFileToWebhook(queuedFile.file, queuedFile.category, yourName, department, message);
+          clearInterval(interval);
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? { ...f, status: 'complete' as const, progress: 100 } : f)
+          );
+          toast.success(`${queuedFile.name} uploaded!`);
+        }
       } catch (error) {
-        clearInterval(interval);
         console.error('Upload error:', error);
         setQueuedFiles(prev =>
-          prev.map(f => f.id === queuedFile.id ? { ...f, status: 'error' as const, progress: 0 } : f)
+          prev.map(f => f.id === queuedFile.id ? { ...f, status: 'error' as const, progress: 0, statusMessage: undefined } : f)
         );
-        toast.error(`Failed to upload ${queuedFile.name}`);
+        toast.error(`Failed to upload ${queuedFile.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
+
+    setIsSubmitting(false);
   }, [yourName, department, message, queuedFiles]);
 
   // Remove file from queue
@@ -171,9 +242,13 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-orange-950/20 to-slate-900">
-      {/* Rubber Band Ball Animation Area */}
-      <div className="relative h-24 w-full overflow-hidden bg-gradient-to-b from-orange-900/30 to-transparent">
-        <RubberBandBall size={50} />
+      {/* OfficeMax Rubber Band Ball */}
+      <div className="flex justify-center py-6 bg-gradient-to-b from-orange-900/30 to-transparent">
+        <img
+          src="/officemaxball.jpeg"
+          alt="OfficeMax Rubber Band Ball"
+          className="w-24 h-24 object-contain drop-shadow-lg"
+        />
       </div>
 
       <div className="container max-w-2xl mx-auto px-4 py-6">
@@ -552,10 +627,19 @@ export default function Index() {
               <Button
                 onClick={submitFiles}
                 className="w-full bg-orange-600 hover:bg-orange-700 text-white py-6 text-lg"
-                disabled={!yourName.trim()}
+                disabled={!yourName.trim() || isSubmitting}
               >
-                <Send className="w-5 h-5 mr-2" />
-                Submit {pendingCount} File{pendingCount > 1 ? 's' : ''}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5 mr-2" />
+                    Submit {pendingCount} File{pendingCount > 1 ? 's' : ''}
+                  </>
+                )}
               </Button>
             )}
           </CardContent>
@@ -617,22 +701,26 @@ function FileItem({
   formatFileSize: (bytes: number) => string;
   onRemove?: () => void;
 }) {
+  const isProcessing = file.status === 'uploading' || file.status === 'compressing';
+
   return (
     <div className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg">
       {file.status === 'complete' ? (
         <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
       ) : file.status === 'error' ? (
         <div className="w-5 h-5 rounded-full bg-red-400 shrink-0" />
-      ) : file.status === 'uploading' ? (
+      ) : isProcessing ? (
         <div className="w-5 h-5 rounded-full border-2 border-orange-400 border-t-transparent animate-spin shrink-0" />
       ) : (
         <div className="w-5 h-5 rounded-full border-2 border-slate-400 shrink-0" />
       )}
       <div className="flex-1 min-w-0">
         <p className="text-white truncate">{file.name}</p>
-        <p className="text-slate-400 text-sm">{formatFileSize(file.size)}</p>
+        <p className="text-slate-400 text-sm">
+          {file.statusMessage || formatFileSize(file.size)}
+        </p>
       </div>
-      {file.status === 'uploading' && (
+      {isProcessing && (
         <div className="w-20">
           <Progress value={file.progress} className="h-2" />
         </div>

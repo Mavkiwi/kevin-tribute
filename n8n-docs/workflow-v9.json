@@ -1,0 +1,244 @@
+{
+  "name": "Kevin Tribute v9",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kevin-tribute",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "kevin-tribute"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'received', message: 'Processing your contribution. Thank you!' }) }}",
+        "options": {}
+      },
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\n\n// Parse metadata from form data\nlet metadata = {};\ntry {\n  if (item.json.body && item.json.body.metadata) {\n    metadata = typeof item.json.body.metadata === 'string'\n      ? JSON.parse(item.json.body.metadata)\n      : item.json.body.metadata;\n  } else if (item.json.metadata) {\n    metadata = typeof item.json.metadata === 'string'\n      ? JSON.parse(item.json.metadata)\n      : item.json.metadata;\n  } else {\n    metadata = item.json.body || item.json || {};\n  }\n} catch (e) {\n  metadata = item.json.body || item.json || {};\n}\n\nconst contributor = metadata.contributor_name || 'Unknown';\nconst cleanName = contributor.replace(/[^a-zA-Z0-9]/g, '');\nconst category = metadata.category || 'audio';\nconst isAudio = (category === 'audio');\nconst fileType = isAudio ? 'Audio' : 'Photo';\nconst fileSize = parseInt(metadata.file_size) || 0;\n\nconst now = new Date();\nconst dateStr = now.toISOString().slice(0,10).replace(/-/g,'');\nconst timeStr = now.toISOString().slice(11,19).replace(/:/g,'');\nconst timestamp = dateStr + '_' + timeStr;\n\nconst origName = metadata.file_name || 'upload';\nconst ext = origName.includes('.') ? origName.split('.').pop() : (isAudio ? 'webm' : 'jpg');\nconst newFileName = cleanName + '_' + timestamp + '_' + fileType + '.' + ext;\n\n// Chunk metadata for big file support\nconst chunkIndex = parseInt(metadata.chunk_index) || 0;\nconst totalChunks = parseInt(metadata.total_chunks) || 1;\nconst recordingId = metadata.recording_id || '';\nconst isChunked = totalChunks > 1;\n\n// Re-attach binary data\nlet newBinary = {};\nif (item.binary) {\n  const binaryKey = Object.keys(item.binary)[0];\n  if (binaryKey) {\n    newBinary.data = item.binary[binaryKey];\n  }\n}\n\nreturn [{\n  json: {\n    contributor_name: contributor,\n    cleanName: cleanName,\n    department: metadata.department || '',\n    message: metadata.message || '',\n    original_file_name: origName,\n    new_file_name: newFileName,\n    file_type: fileType,\n    file_size: fileSize,\n    isAudio: isAudio,\n    isChunked: isChunked,\n    chunkIndex: chunkIndex,\n    totalChunks: totalChunks,\n    recordingId: recordingId,\n    timestamp: now.toISOString(),\n    canTranscribe: isAudio && fileSize <= 25000000\n  },\n  binary: newBinary\n}];"
+      },
+      "name": "Parse Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "" },
+          "conditions": [
+            {
+              "id": "audio-check",
+              "leftValue": "={{ $json.isAudio }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Is Audio?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $json.new_file_name }}",
+        "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
+        "folderId": { "__rl": true, "mode": "id", "value": "TODO_SET_KEVIN_FOLDER_ID" },
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "name": "Upload Audio to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1050, 200],
+      "notes": "PRIORITY: Save audio to Drive FIRST before any transcription"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Re-attach binary from Parse Data for transcription\nconst uploadResult = $input.first();\nconst parseData = $('Parse Data').first();\n\nreturn [{\n  json: {\n    ...parseData.json,\n    driveFileId: uploadResult.json.id || '',\n    driveLink: uploadResult.json.webViewLink || '',\n    driveName: uploadResult.json.name || ''\n  },\n  binary: parseData.binary || {}\n}];"
+      },
+      "name": "Prepare Transcription",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 200],
+      "notes": "Re-attaches binary data from Parse Data for Whisper transcription"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "" },
+          "conditions": [
+            {
+              "id": "size-check",
+              "leftValue": "={{ $json.canTranscribe }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Can Transcribe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1450, 200],
+      "notes": "Check if file is <= 25MB for Whisper API limit"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "name": "Transcribe",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [1650, 150]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "mode": "id", "value": "1UwdnAcIYEoQoJlg5Tgx_xYj1gYXsNUNKdCxTX4lxYQE" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "data" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $('Parse Data').first().json.timestamp }}",
+            "Contributor": "={{ $('Parse Data').first().json.contributor_name }}",
+            "Department": "={{ $('Parse Data').first().json.department }}",
+            "Type": "Audio",
+            "FileName": "={{ $('Parse Data').first().json.new_file_name }}",
+            "Message": "={{ $('Parse Data').first().json.message }}",
+            "Transcription": "={{ $json.text || '' }}",
+            "DriveLink": "={{ $('Prepare Transcription').first().json.driveLink }}",
+            "ChunkInfo": "={{ $('Parse Data').first().json.isChunked ? 'Part ' + ($('Parse Data').first().json.chunkIndex + 1) + ' of ' + $('Parse Data').first().json.totalChunks : '' }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Log Audio",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1850, 150]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "mode": "id", "value": "1UwdnAcIYEoQoJlg5Tgx_xYj1gYXsNUNKdCxTX4lxYQE" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "data" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $('Parse Data').first().json.timestamp }}",
+            "Contributor": "={{ $('Parse Data').first().json.contributor_name }}",
+            "Department": "={{ $('Parse Data').first().json.department }}",
+            "Type": "Audio",
+            "FileName": "={{ $('Parse Data').first().json.new_file_name }}",
+            "Message": "={{ $('Parse Data').first().json.message }}",
+            "Transcription": "File too large for auto-transcription (>25MB). Audio saved to Drive.",
+            "DriveLink": "={{ $('Prepare Transcription').first().json.driveLink }}",
+            "ChunkInfo": ""
+          }
+        },
+        "options": {}
+      },
+      "name": "Log Audio No Transcription",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1650, 280]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $json.new_file_name }}",
+        "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
+        "folderId": { "__rl": true, "mode": "id", "value": "TODO_SET_KEVIN_FOLDER_ID" },
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "name": "Upload Image to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "mode": "id", "value": "1UwdnAcIYEoQoJlg5Tgx_xYj1gYXsNUNKdCxTX4lxYQE" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "data" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $('Parse Data').first().json.timestamp }}",
+            "Contributor": "={{ $('Parse Data').first().json.contributor_name }}",
+            "Department": "={{ $('Parse Data').first().json.department }}",
+            "Type": "Image",
+            "FileName": "={{ $('Parse Data').first().json.new_file_name }}",
+            "Message": "={{ $('Parse Data').first().json.message }}",
+            "Transcription": "",
+            "DriveLink": "={{ $json.webViewLink || '' }}",
+            "ChunkInfo": ""
+          }
+        },
+        "options": {}
+      },
+      "name": "Log Image",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1250, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]]
+    },
+    "Respond OK": {
+      "main": [[{ "node": "Parse Data", "type": "main", "index": 0 }]]
+    },
+    "Parse Data": {
+      "main": [[{ "node": "Is Audio?", "type": "main", "index": 0 }]]
+    },
+    "Is Audio?": {
+      "main": [
+        [{ "node": "Upload Audio to Drive", "type": "main", "index": 0 }],
+        [{ "node": "Upload Image to Drive", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upload Audio to Drive": {
+      "main": [[{ "node": "Prepare Transcription", "type": "main", "index": 0 }]]
+    },
+    "Prepare Transcription": {
+      "main": [[{ "node": "Can Transcribe?", "type": "main", "index": 0 }]]
+    },
+    "Can Transcribe?": {
+      "main": [
+        [{ "node": "Transcribe", "type": "main", "index": 0 }],
+        [{ "node": "Log Audio No Transcription", "type": "main", "index": 0 }]
+      ]
+    },
+    "Transcribe": {
+      "main": [[{ "node": "Log Audio", "type": "main", "index": 0 }]]
+    },
+    "Upload Image to Drive": {
+      "main": [[{ "node": "Log Image", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}
