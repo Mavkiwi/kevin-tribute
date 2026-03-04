@@ -255,7 +255,7 @@ export default function Index() {
 
         {/* Header */}
         <div className="text-center mb-8">
-          <Award className="w-12 h-12 mx-auto mb-4 text-orange-400" />
+          <img src="/kevin.png" alt="Kevin" className="w-24 h-24 mx-auto mb-4 rounded-full object-cover" />
           <h1 className="text-3xl font-semibold text-white mb-2">For Kevin</h1>
           <p className="text-slate-300 text-lg">Celebrating a Legend's Retirement</p>
         </div>
