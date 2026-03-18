@@ -401,25 +401,7 @@ export default function Index() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="record" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 bg-slate-700">
-                <TabsTrigger value="record" className="data-[state=active]:bg-orange-600">
-                  <Mic className="w-4 h-4 mr-2" />
-                  Record Now
-                </TabsTrigger>
-                <TabsTrigger value="upload" className="data-[state=active]:bg-orange-600">
-                  <FileAudio className="w-4 h-4 mr-2" />
-                  Upload Audio
-                </TabsTrigger>
-                <TabsTrigger value="image" className="data-[state=active]:bg-orange-600">
-                  <ImageIcon className="w-4 h-4 mr-2" />
-                  Photos
-                </TabsTrigger>
-              </TabsList>
-
-              {/* Record Now Tab */}
-              <TabsContent value="record" className="mt-4">
-                <div className="border-2 border-dashed rounded-xl p-6 text-center border-slate-600">
+            <div className="border-2 border-dashed rounded-xl p-6 text-center border-slate-600">
                   <AudioVisualizer
                     analyserNode={analyserNode}
                     isRecording={isRecording}
@@ -459,78 +441,18 @@ export default function Index() {
                     <p className="text-red-400 text-sm mt-2">{recordingError}</p>
                   )}
                 </div>
-              </TabsContent>
 
-              {/* Upload Audio Tab */}
-              <TabsContent value="upload" className="mt-4">
-                <div
-                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-                    isDraggingAudio
-                      ? 'border-orange-400 bg-orange-400/10'
-                      : 'border-slate-600 hover:border-slate-500'
-                  }`}
-                  onDrop={(e) => handleDrop(e, 'audio')}
-                  onDragOver={(e) => handleDragOver(e, 'audio')}
-                  onDragLeave={() => handleDragLeave('audio')}
-                >
-                  <FileAudio className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-300 mb-4">
-                    Drag and drop your audio file here, or
+              <div className="mt-4 p-4 bg-slate-700/30 rounded-lg border border-slate-600">
+                <div className="flex items-center gap-3">
+                  <ImageIcon className="w-5 h-5 text-orange-400 shrink-0" />
+                  <p className="text-slate-300 text-sm">
+                    Got photos of Kevin? Email them to{' '}
+                    <a href="mailto:jeff.sutton@officemax.co.nz?subject=Kevin%20Tribute%20-%20Photos" className="text-orange-400 hover:underline font-medium">
+                      jeff.sutton@officemax.co.nz
+                    </a>
                   </p>
-                  <label>
-                    <input
-                      type="file"
-                      accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => addFilesToQueue(e.target.files, 'audio')}
-                    />
-                    <Button
-                      variant="secondary"
-                      className="cursor-pointer bg-orange-600 hover:bg-orange-700"
-                      asChild
-                    >
-                      <span>Choose Audio Files</span>
-                    </Button>
-                  </label>
                 </div>
-              </TabsContent>
-
-              {/* Photos Tab */}
-              <TabsContent value="image" className="mt-4">
-                <div
-                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-                    isDraggingImage
-                      ? 'border-orange-400 bg-orange-400/10'
-                      : 'border-slate-600 hover:border-slate-500'
-                  }`}
-                  onDrop={(e) => handleDrop(e, 'image')}
-                  onDragOver={(e) => handleDragOver(e, 'image')}
-                  onDragLeave={() => handleDragLeave('image')}
-                >
-                  <ImageIcon className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-300 mb-4">
-                    Drag and drop your photos here, or
-                  </p>
-                  <label>
-                    <input
-                      type="file"
-                      accept="image/*,.jpg,.jpeg,.png,.gif,.heic,.webp"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => addFilesToQueue(e.target.files, 'image')}
-                    />
-                    <Button
-                      variant="secondary"
-                      className="cursor-pointer bg-orange-600 hover:bg-orange-700"
-                      asChild
-                    >
-                      <span>Choose Photos</span>
-                    </Button>
-                  </label>
-                </div>
-              </TabsContent>
-            </Tabs>
+              </div>
 
             {/* Queued Files List */}
             {queuedFiles.length > 0 && (
@@ -667,9 +589,9 @@ export default function Index() {
         <Card className="bg-slate-800/30 border-orange-900/50">
           <CardContent className="pt-6">
             <p className="text-slate-400 text-center text-sm">
-              Having trouble uploading? Email your files to{' '}
-              <a href="mailto:jeff@plex.nz" className="text-orange-400 hover:underline">
-                jeff@plex.nz
+              Having trouble? Email your recordings or photos to{' '}
+              <a href="mailto:jeff.sutton@officemax.co.nz?subject=Kevin%20Tribute" className="text-orange-400 hover:underline">
+                jeff.sutton@officemax.co.nz
               </a>
             </p>
           </CardContent>
