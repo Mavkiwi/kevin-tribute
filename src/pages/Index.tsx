@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Upload, CheckCircle2, Mic, Image, HelpCircle, FileAudio, ImageIcon, MessageSquare, Lightbulb, Square, Send, Loader2 } from 'lucide-react';
+import { Upload, CheckCircle2, Mic, Image, HelpCircle, FileAudio, ImageIcon, MessageSquare, Lightbulb, Square } from 'lucide-react';
 import { sendFileToWebhook, sendChunkedFiles, FileCategory } from '@/lib/webhook';
 import { compressAudioForTranscription, needsCompression } from '@/lib/audioCompressor';
 import { Button } from '@/components/ui/button';
@@ -147,51 +147,7 @@ export default function Index() {
     }
   }, [isRecording, handleRecordingStop, startRecording]);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-
-  // "Send" button - sends the contributor details to tag the recordings
-  const handleSend = useCallback(async () => {
-    if (!yourName.trim()) {
-      toast.error('Please enter your name');
-      nameInputRef.current?.focus();
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      // Send a metadata-only call so the name/dept/message gets logged
-      const metadata = {
-        type: 'kevin_tribute',
-        category: 'metadata' as FileCategory,
-        timestamp: new Date().toISOString(),
-        file_name: 'contributor-details',
-        file_type: 'metadata',
-        file_size: 0,
-        contributor_name: yourName,
-        department: department || 'Not specified',
-        message: message || '',
-      };
-
-      const formData = new FormData();
-      // Create a tiny placeholder so the webhook doesn't reject
-      const placeholder = new Blob(['details'], { type: 'text/plain' });
-      formData.append('attachment', placeholder, 'contributor-details.txt');
-      formData.append('metadata', JSON.stringify(metadata));
-
-      await fetch('https://plex.app.n8n.cloud/webhook/kevin-tribute', {
-        method: 'POST',
-        body: formData,
-      });
-
-      setHasSubmitted(true);
-      toast.success('Thank you! Your contribution has been sent.');
-    } catch (err) {
-      console.error('Send error:', err);
-      toast.error('Something went wrong, but your recording is safe.');
-    }
-    setIsSubmitting(false);
-  }, [yourName, department, message]);
+  const [isSubmitting] = useState(false);
 
   // Remove file from queue
   const removeFromQueue = useCallback((id: string) => {
@@ -558,37 +514,14 @@ export default function Index() {
               />
             </div>
 
-            {!hasSubmitted && (
-              <Button
-                onClick={handleSend}
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white py-6 text-lg"
-                disabled={!yourName.trim() || isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-5 h-5 mr-2" />
-                    Send My Contribution
-                  </>
-                )}
-              </Button>
-            )}
-
-            {hasSubmitted && (
-              <div className="flex items-center gap-3 p-4 bg-green-900/30 rounded-lg border border-green-700">
-                <CheckCircle2 className="w-6 h-6 text-green-400 shrink-0" />
-                <p className="text-green-300 font-medium">Sent! Thank you{yourName ? `, ${yourName}` : ''}.</p>
-              </div>
-            )}
+            <p className="text-slate-400 text-xs">
+              Fill in your details before or after recording — your audio sends automatically when you stop.
+            </p>
           </CardContent>
         </Card>
 
         {/* Success Message */}
-        {hasSubmitted && (
+        {completedCount > 0 && (
           <Card className="mb-6 bg-green-900/30 border-green-700">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -596,7 +529,8 @@ export default function Index() {
                 <div>
                   <p className="text-green-300 font-medium">Thank you{yourName ? `, ${yourName}` : ''}!</p>
                   <p className="text-green-400/80 text-sm">
-                    Your contribution has been received and will be included in Kevin's retirement book.
+                    Your {completedCount === 1 ? 'contribution has' : 'contributions have'} been received.
+                    They'll be included in Kevin's retirement book.
                   </p>
                 </div>
               </div>
