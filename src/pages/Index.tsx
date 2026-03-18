@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Upload, CheckCircle2, Mic, Image, HelpCircle, FileAudio, ImageIcon, MessageSquare, Lightbulb, Square } from 'lucide-react';
+import { Upload, CheckCircle2, Award, Mic, Image, Clock, HelpCircle, FileAudio, ImageIcon, MessageSquare, Lightbulb, Square, Send, Loader2 } from 'lucide-react';
 import { sendFileToWebhook, sendChunkedFiles, FileCategory } from '@/lib/webhook';
 import { compressAudioForTranscription, needsCompression } from '@/lib/audioCompressor';
 import { Button } from '@/components/ui/button';
@@ -32,111 +32,51 @@ export default function Index() {
   const [message, setMessage] = useState('');
   const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [isDraggingAudio, setIsDraggingAudio] = useState(false);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Audio recording hook
   const { isRecording, duration, analyserNode, startRecording, stopRecording, error: recordingError } = useAudioRecorder();
 
-  // Send a file immediately to the webhook (fire-and-forget, don't wait for name)
-  const sendFileImmediately = useCallback(async (file: File, category: FileCategory, fileId: string) => {
-    setQueuedFiles(prev =>
-      prev.map(f => f.id === fileId ? { ...f, status: 'uploading' as const, progress: 10 } : f)
-    );
-
-    try {
-      // Compress big audio files first
-      if (category === 'audio' && needsCompression(file)) {
-        setQueuedFiles(prev =>
-          prev.map(f => f.id === fileId ? { ...f, status: 'compressing' as const, statusMessage: 'Compressing audio...', progress: 0 } : f)
-        );
-
-        const result = await compressAudioForTranscription(file, (progress) => {
-          setQueuedFiles(prev =>
-            prev.map(f => f.id === fileId ? { ...f, progress: Math.round(progress.percent * 0.5), statusMessage: progress.message } : f)
-          );
-        });
-
-        setQueuedFiles(prev =>
-          prev.map(f => f.id === fileId ? { ...f, status: 'uploading' as const, statusMessage: 'Uploading...', progress: 50 } : f)
-        );
-
-        await sendChunkedFiles(result.files, 'audio', yourName || 'Recording in progress', department, message, result.recordingId, (chunkIndex, totalChunks) => {
-          setQueuedFiles(prev =>
-            prev.map(f => f.id === fileId ? { ...f, progress: 50 + Math.round(((chunkIndex + 1) / totalChunks) * 50) } : f)
-          );
-        });
-
-        toast.success(`Recording saved! (compressed from ${formatFileSize(result.originalSize)} to ${formatFileSize(result.totalCompressedSize)})`);
-      } else {
-        // Normal upload - simulate progress
-        const interval = setInterval(() => {
-          setQueuedFiles(prev =>
-            prev.map(f => f.id === fileId && f.status === 'uploading' ? { ...f, progress: Math.min(f.progress + 15, 90) } : f)
-          );
-        }, 150);
-
-        await sendFileToWebhook(file, category, yourName || 'Recording in progress', department, message);
-        clearInterval(interval);
-        toast.success('Recording saved!');
-      }
-
-      setQueuedFiles(prev =>
-        prev.map(f => f.id === fileId ? { ...f, status: 'complete' as const, progress: 100, statusMessage: undefined } : f)
-      );
-    } catch (error) {
-      console.error('Upload error:', error);
-      setQueuedFiles(prev =>
-        prev.map(f => f.id === fileId ? { ...f, status: 'error' as const, progress: 0, statusMessage: undefined } : f)
-      );
-      toast.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }, [yourName, department, message]);
-
-  // Add files to queue AND send immediately
+  // Add files to queue (don't upload yet)
   const addFilesToQueue = useCallback((files: FileList | null, category: FileCategory) => {
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach(file => {
-      const fileId = crypto.randomUUID();
-      const newFile: QueuedFile = {
-        id: fileId,
-        file,
-        name: file.name,
-        size: file.size,
-        category,
-        status: 'uploading',
-        progress: 0,
-      };
-      setQueuedFiles(prev => [...prev, newFile]);
-      // Send immediately - don't wait for name
-      sendFileImmediately(file, category, fileId);
-    });
-  }, [sendFileImmediately]);
+    const newFiles: QueuedFile[] = Array.from(files).map(file => ({
+      id: crypto.randomUUID(),
+      file,
+      name: file.name,
+      size: file.size,
+      category,
+      status: 'pending' as const,
+      progress: 0,
+    }));
 
-  // Handle recording stop - send immediately
+    setQueuedFiles(prev => [...prev, ...newFiles]);
+    toast.success(`${files.length} file${files.length > 1 ? 's' : ''} added. Enter your name and click Submit.`);
+  }, []);
+
+  // Handle recording stop - add to queue
   const handleRecordingStop = useCallback(async () => {
     const audioBlob = await stopRecording();
     if (!audioBlob) return;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const file = new File([audioBlob], `kevin-tribute-recording-${timestamp}.webm`, { type: 'audio/webm' });
-    const fileId = crypto.randomUUID();
 
     const newFile: QueuedFile = {
-      id: fileId,
+      id: crypto.randomUUID(),
       file,
       name: file.name,
       size: file.size,
       category: 'audio',
-      status: 'uploading',
+      status: 'pending',
       progress: 0,
     };
 
     setQueuedFiles(prev => [...prev, newFile]);
-    toast.info('Sending recording...');
-    // Send immediately
-    sendFileImmediately(file, 'audio', fileId);
-  }, [stopRecording, sendFileImmediately]);
+    toast.success('Recording saved! Enter your name and click Submit.');
+  }, [stopRecording]);
 
   // Handle record button click
   const handleRecordClick = useCallback(async () => {
@@ -147,26 +87,146 @@ export default function Index() {
     }
   }, [isRecording, handleRecordingStop, startRecording]);
 
-  const [isSubmitting] = useState(false);
+  // Submit all pending files
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submitFiles = useCallback(async () => {
+    if (!yourName.trim()) {
+      toast.error('Please enter your name before submitting');
+      nameInputRef.current?.focus();
+      return;
+    }
+
+    const pendingFiles = queuedFiles.filter(f => f.status === 'pending');
+    if (pendingFiles.length === 0) {
+      toast.error('No files to submit');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    for (const queuedFile of pendingFiles) {
+      try {
+        // For big audio files, compress first
+        if (queuedFile.category === 'audio' && needsCompression(queuedFile.file)) {
+          // Compression phase
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? {
+              ...f,
+              status: 'compressing' as const,
+              statusMessage: 'Compressing audio...',
+              progress: 0
+            } : f)
+          );
+
+          const result = await compressAudioForTranscription(queuedFile.file, (progress) => {
+            setQueuedFiles(prev =>
+              prev.map(f => f.id === queuedFile.id ? {
+                ...f,
+                progress: Math.round(progress.percent * 0.5), // First 50% is compression
+                statusMessage: progress.message
+              } : f)
+            );
+          });
+
+          // Upload phase (compressed chunks)
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? {
+              ...f,
+              status: 'uploading' as const,
+              statusMessage: result.chunkCount > 1
+                ? `Uploading ${result.chunkCount} chunks...`
+                : 'Uploading compressed audio...',
+              progress: 50
+            } : f)
+          );
+
+          await sendChunkedFiles(
+            result.files,
+            'audio',
+            yourName,
+            department,
+            message,
+            result.recordingId,
+            (chunkIndex, totalChunks) => {
+              const uploadProgress = 50 + Math.round(((chunkIndex + 1) / totalChunks) * 50);
+              setQueuedFiles(prev =>
+                prev.map(f => f.id === queuedFile.id ? {
+                  ...f,
+                  progress: uploadProgress,
+                  statusMessage: `Uploaded chunk ${chunkIndex + 1} of ${totalChunks}`
+                } : f)
+              );
+            }
+          );
+
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? {
+              ...f,
+              status: 'complete' as const,
+              progress: 100,
+              statusMessage: undefined
+            } : f)
+          );
+          toast.success(`${queuedFile.name} uploaded! (compressed from ${formatFileSize(result.originalSize)} to ${formatFileSize(result.totalCompressedSize)})`);
+
+        } else {
+          // Normal upload (small files or images)
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? { ...f, status: 'uploading' as const, progress: 0 } : f)
+          );
+
+          // Simulate progress for small files
+          const interval = setInterval(() => {
+            setQueuedFiles(prev =>
+              prev.map(f =>
+                f.id === queuedFile.id && f.status === 'uploading'
+                  ? { ...f, progress: Math.min(f.progress + 15, 90) }
+                  : f
+              )
+            );
+          }, 150);
+
+          await sendFileToWebhook(queuedFile.file, queuedFile.category, yourName, department, message);
+          clearInterval(interval);
+          setQueuedFiles(prev =>
+            prev.map(f => f.id === queuedFile.id ? { ...f, status: 'complete' as const, progress: 100 } : f)
+          );
+          toast.success(`${queuedFile.name} uploaded!`);
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+        setQueuedFiles(prev =>
+          prev.map(f => f.id === queuedFile.id ? { ...f, status: 'error' as const, progress: 0, statusMessage: undefined } : f)
+        );
+        toast.error(`Failed to upload ${queuedFile.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    setIsSubmitting(false);
+  }, [yourName, department, message, queuedFiles]);
 
   // Remove file from queue
   const removeFromQueue = useCallback((id: string) => {
     setQueuedFiles(prev => prev.filter(f => f.id !== id));
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent, category: FileCategory) => {
     e.preventDefault();
-    setIsDraggingAudio(false);
-    addFilesToQueue(e.dataTransfer.files, 'audio');
+    if (category === 'audio') setIsDraggingAudio(false);
+    if (category === 'image') setIsDraggingImage(false);
+    addFilesToQueue(e.dataTransfer.files, category);
   }, [addFilesToQueue]);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent, category: FileCategory) => {
     e.preventDefault();
-    setIsDraggingAudio(true);
+    if (category === 'audio') setIsDraggingAudio(true);
+    if (category === 'image') setIsDraggingImage(true);
   }, []);
 
-  const handleDragLeave = useCallback(() => {
-    setIsDraggingAudio(false);
+  const handleDragLeave = useCallback((category: FileCategory) => {
+    if (category === 'audio') setIsDraggingAudio(false);
+    if (category === 'image') setIsDraggingImage(false);
   }, []);
 
   const formatFileSize = (bytes: number) => {
@@ -178,6 +238,7 @@ export default function Index() {
   const pendingCount = queuedFiles.filter(f => f.status === 'pending').length;
   const completedCount = queuedFiles.filter(f => f.status === 'complete').length;
   const audioFiles = queuedFiles.filter(f => f.category === 'audio');
+  const imageFiles = queuedFiles.filter(f => f.category === 'image');
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-orange-950/20 to-slate-900">
@@ -341,7 +402,7 @@ export default function Index() {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="record" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-slate-700">
+              <TabsList className="grid w-full grid-cols-3 bg-slate-700">
                 <TabsTrigger value="record" className="data-[state=active]:bg-orange-600">
                   <Mic className="w-4 h-4 mr-2" />
                   Record Now
@@ -349,6 +410,10 @@ export default function Index() {
                 <TabsTrigger value="upload" className="data-[state=active]:bg-orange-600">
                   <FileAudio className="w-4 h-4 mr-2" />
                   Upload Audio
+                </TabsTrigger>
+                <TabsTrigger value="image" className="data-[state=active]:bg-orange-600">
+                  <ImageIcon className="w-4 h-4 mr-2" />
+                  Photos
                 </TabsTrigger>
               </TabsList>
 
@@ -404,9 +469,9 @@ export default function Index() {
                       ? 'border-orange-400 bg-orange-400/10'
                       : 'border-slate-600 hover:border-slate-500'
                   }`}
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, 'audio')}
+                  onDragOver={(e) => handleDragOver(e, 'audio')}
+                  onDragLeave={() => handleDragLeave('audio')}
                 >
                   <FileAudio className="w-12 h-12 mx-auto mb-4 text-slate-400" />
                   <p className="text-slate-300 mb-4">
@@ -431,25 +496,47 @@ export default function Index() {
                 </div>
               </TabsContent>
 
-              {/* Photos - email instead */}
-              <div className="mt-4 p-4 bg-slate-700/30 rounded-lg border border-slate-600">
-                <div className="flex items-center gap-3">
-                  <ImageIcon className="w-5 h-5 text-orange-400 shrink-0" />
-                  <p className="text-slate-300 text-sm">
-                    Got photos of Kevin? Email them to{' '}
-                    <a href="mailto:jeff.sutton@officemax.co.nz?subject=Kevin%20Tribute%20-%20Photos" className="text-orange-400 hover:underline font-medium">
-                      jeff.sutton@officemax.co.nz
-                    </a>
+              {/* Photos Tab */}
+              <TabsContent value="image" className="mt-4">
+                <div
+                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+                    isDraggingImage
+                      ? 'border-orange-400 bg-orange-400/10'
+                      : 'border-slate-600 hover:border-slate-500'
+                  }`}
+                  onDrop={(e) => handleDrop(e, 'image')}
+                  onDragOver={(e) => handleDragOver(e, 'image')}
+                  onDragLeave={() => handleDragLeave('image')}
+                >
+                  <ImageIcon className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                  <p className="text-slate-300 mb-4">
+                    Drag and drop your photos here, or
                   </p>
+                  <label>
+                    <input
+                      type="file"
+                      accept="image/*,.jpg,.jpeg,.png,.gif,.heic,.webp"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => addFilesToQueue(e.target.files, 'image')}
+                    />
+                    <Button
+                      variant="secondary"
+                      className="cursor-pointer bg-orange-600 hover:bg-orange-700"
+                      asChild
+                    >
+                      <span>Choose Photos</span>
+                    </Button>
+                  </label>
                 </div>
-              </div>
+              </TabsContent>
             </Tabs>
 
             {/* Queued Files List */}
             {queuedFiles.length > 0 && (
               <div className="mt-6 space-y-3">
                 <h3 className="text-white font-medium">
-                  Files ({completedCount} complete)
+                  Files ({pendingCount} pending, {completedCount} complete)
                 </h3>
 
                 {audioFiles.length > 0 && (
@@ -468,6 +555,21 @@ export default function Index() {
                   </div>
                 )}
 
+                {imageFiles.length > 0 && (
+                  <div className="space-y-2 mt-4">
+                    <p className="text-slate-400 text-sm flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4" /> Photos ({imageFiles.length})
+                    </p>
+                    {imageFiles.map((file) => (
+                      <FileItem
+                        key={file.id}
+                        file={file}
+                        formatFileSize={formatFileSize}
+                        onRemove={file.status === 'pending' ? () => removeFromQueue(file.id) : undefined}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -490,8 +592,14 @@ export default function Index() {
                 value={yourName}
                 onChange={(e) => setYourName(e.target.value)}
                 placeholder="e.g. Sarah Jones"
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
+                className={`bg-slate-700 border-slate-600 text-white placeholder:text-slate-400 ${
+                  pendingCount > 0 && !yourName.trim() ? 'border-orange-500 ring-1 ring-orange-500' : ''
+                }`}
+                required
               />
+              {pendingCount > 0 && !yourName.trim() && (
+                <p className="text-orange-400 text-sm mt-1">Please enter your name to submit</p>
+              )}
             </div>
             <div>
               <Label htmlFor="department" className="text-slate-200">Department / Team</Label>
@@ -514,9 +622,26 @@ export default function Index() {
               />
             </div>
 
-            <p className="text-slate-400 text-xs">
-              Fill in your details before or after recording — your audio sends automatically when you stop.
-            </p>
+            {/* Submit Button */}
+            {pendingCount > 0 && (
+              <Button
+                onClick={submitFiles}
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white py-6 text-lg"
+                disabled={!yourName.trim() || isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5 mr-2" />
+                    Submit {pendingCount} File{pendingCount > 1 ? 's' : ''}
+                  </>
+                )}
+              </Button>
+            )}
           </CardContent>
         </Card>
 
@@ -542,9 +667,9 @@ export default function Index() {
         <Card className="bg-slate-800/30 border-orange-900/50">
           <CardContent className="pt-6">
             <p className="text-slate-400 text-center text-sm">
-              Having trouble? Email your recordings or photos to{' '}
-              <a href="mailto:jeff.sutton@officemax.co.nz?subject=Kevin%20Tribute" className="text-orange-400 hover:underline">
-                jeff.sutton@officemax.co.nz
+              Having trouble uploading? Email your files to{' '}
+              <a href="mailto:jeff@plex.nz" className="text-orange-400 hover:underline">
+                jeff@plex.nz
               </a>
             </p>
           </CardContent>
