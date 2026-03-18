@@ -186,7 +186,8 @@ export default function Index() {
 
       setHasSubmitted(true);
       toast.success('Thank you! Your contribution has been sent.');
-    } catch {
+    } catch (err) {
+      console.error('Send error:', err);
       toast.error('Something went wrong, but your recording is safe.');
     }
     setIsSubmitting(false);
